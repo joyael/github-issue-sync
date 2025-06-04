@@ -1,1 +1,4 @@
 myvenv/
+ISSUE_SYNC/configuration/
+token.pickle
+.env
