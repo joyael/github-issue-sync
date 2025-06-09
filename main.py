@@ -6,8 +6,9 @@ from google_auth_oauthlib.flow import InstalledAppFlow
 from google.auth.transport.requests import Request
 import pickle
 from dotenv import load_dotenv
+import re
 
-load_dotenv('./configuration/.env')
+load_dotenv('./config/.env')
 github_token = os.getenv('GITHUB_TOKEN')
 github_repo_owner = os.getenv('GITHUB_REPO_OWNER')
 github_repo_name = os.getenv('GITHUB_REPO_NAME')
@@ -20,39 +21,332 @@ credentials_path = os.getenv('CREDENTIALS_PATH')
 
 def get_github_user_full_name(username):
     url = f"https://api.github.com/users/{username}"
-    response = requests.get(url)
+    headers = {
+        'Authorization': f'Bearer {github_token}',
+        'Accept': 'application/vnd.github+json'
+    }
+    response = requests.get(url, headers=headers)
     if response.status_code == 200:
         user_data = response.json()
-        return user_data.get("name")
+        return user_data.get("name") or username
     else:
+        print(f"Failed to fetch user {username}: {response.status_code} - {response.text}")
         return username
 
 # Issue fields to update in Google Sheets
 ISSUE_FIELDS = ['number', 'assignee', 'title', 'html_url']
 
-def get_github_issues():
-    """Get GitHub issues using the GitHub API"""
-    url = f'https://api.github.com/repos/{github_repo_owner}/{github_repo_name}/issues'
+def get_github_collaborators():
+    """Get GitHub collaborators using the GitHub API"""
+    url = f'https://api.github.com/repos/{github_repo_owner}/{github_repo_name}/collaborators'
     headers = {'Authorization': f'Bearer {github_token}'}
     response = requests.get(url, headers=headers)
+    collaborators = response.json()
+    collaborator_names = [get_github_user_full_name(collaborator['login']) for collaborator in collaborators]
+    return collaborator_names
+
+def get_github_issues():
+    """Get GitHub issues using the GitHub API"""
+    url = f'https://api.github.com/repos/{github_repo_owner}/{github_repo_name}/issues?state=all'
+    headers = {'Authorization': f'Bearer {github_token}'}
+    response = requests.get(url, headers=headers)
+    issues = response.json()
+    filtered_issues = [issue for issue in issues if issue['node_id'].startswith('I_')]
     print("Git API Response : " , response.json())
-    return response.json()
+    return filtered_issues
+
+
+graphql_url = 'https://api.github.com/graphql'
+headers = {
+        'Authorization': f'Bearer {github_token}',
+        'Content-Type': 'application/json'
+}
+
+def get_issue_by_number(issue_number):
+    query = f"""
+    {{
+      repository(owner: "{github_repo_owner}", name: "{github_repo_name}") {{
+        issue(number: {issue_number}) {{
+          number
+          title
+          url
+          projectItems(first: 5) {{
+            nodes {{
+              project {{ title }}
+              fieldValues(first: 10) {{
+                nodes {{
+                  ... on ProjectV2ItemFieldSingleSelectValue {{
+                    name
+                    field {{
+                      ... on ProjectV2Field {{
+                        name
+                      }}
+                    }}
+                  }}
+                }}
+              }}
+            }}
+          }}
+        }}
+      }}
+    }}
+    """
+    response = requests.post(graphql_url, json={'query': query}, headers=headers)
+    result = response.json()['data']['repository']['issue']
+    project_status = None
+    
+    if result is not None and 'projectItems' in result and result['projectItems'] is not None:
+        for node in result['projectItems']['nodes']:
+            for field_value in node['fieldValues']['nodes']:
+                if 'name' in field_value:
+                    project_status = field_value['name']
+                    break
+            if project_status:
+                break
+    else:
+        return "undefined"
+    if project_status == 'Ready':
+        project_status = 'Pending'
+    if project_status == 'In Review':
+        project_status = 'Review'
+    if project_status == 'Done':
+        project_status = 'Estimation Required'
+    project_status = project_status.title()
+    return project_status
+
+#Define color mapping for each assignee
+colors_d = {
+    'color1': {'back_color': {'red': 0.91, 'green': 0.92, 'blue': 0.93}, 'front_color': {'red': 0.33, 'green': 0.41, 'blue': 0.56}},
+    'color2': {'back_color': {'red': 1.0, 'green': 0.81, 'blue': 0.78}, 'front_color': {'red': 0.7, 'green': 0.05, 'blue': 0.03}},
+    'color3': {'back_color': {'red': 1.0, 'green': 0.78, 'blue': 0.67}, 'front_color': {'red': 0.46, 'green': 0.22, 'blue': 0.0}},
+    'color4': {'back_color': {'red': 1.0, 'green': 0.9, 'blue': 0.63}, 'front_color': {'red': 0.29, 'green': 0.22, 'blue': 0.13}},
+    'color5': {'back_color': {'red': 0.83, 'green': 0.92, 'blue': 0.74}, 'front_color': {'red': 0.49, 'green': 0.73, 'blue': 0.57}},
+    'color6': {'back_color': {'red': 0.75, 'green': 0.87, 'blue': 0.96}, 'front_color': {'red': 0.13, 'green': 0.33, 'blue': 0.54}},
+    'color7': {'back_color': {'red': 0.78, 'green': 0.85, 'blue': 0.88}, 'front_color': {'red': 0.13, 'green': 0.33, 'blue': 0.54}},
+    'color8': {'back_color': {'red': 0.9, 'green': 0.81, 'blue': 0.95}, 'front_color': {'red': 0.56, 'green': 0.2, 'blue': 0.53}},
+    'color9': {'back_color': {'red': 0.24, 'green': 0.24, 'blue': 0.24}, 'front_color': {'red': 0.89, 'green': 0.89, 'blue': 0.89}},
+    'color10': {'back_color': {'red': 0.69, 'green': 0.0, 'blue': 0.01}, 'front_color': {'red': 0.98, 'green': 0.8, 'blue': 0.8}},
+    'color11': {'back_color': {'red': 0.46, 'green': 0.22, 'blue': 0.0}, 'front_color': {'red': 0.46, 'green': 0.22, 'blue': 0.0}},
+    'color12': {'back_color': {'red': 0.28, 'green': 0.22, 'blue': 0.13}, 'front_color': {'red': 0.97, 'green': 0.76, 'blue': 0.64}},
+    'color13': {'back_color': {'red': 0.07, 'green': 0.51, 'blue': 0.29}, 'front_color': {'red': 0.83, 'green': 0.92, 'blue': 0.83}},
+    'color14': {'back_color': {'red': 0.04, 'green': 0.33, 'blue': 0.66}, 'front_color': {'red': 0.89, 'green': 0.87, 'blue': 0.93}},
+    'color15': {'back_color': {'red': 0.13, 'green': 0.33, 'blue': 0.54}, 'front_color': {'red': 0.69, 'green': 0.83, 'blue': 0.93}},
+    'color16': {'back_color': {'red': 0.13, 'green': 0.33, 'blue': 0.54}, 'front_color': {'red': 0.74, 'green': 0.83, 'blue': 0.86}},
+    'color17': {'back_color': {'red': 0.58, 'green': 0.2, 'blue': 0.53}, 'front_color': {'red': 0.78, 'green': 0.78, 'blue': 0.85}}
+}
+assignees_color_map = {
+    'Abhijith Haridas': colors_d['color1'],
+    'Albin Joseph': colors_d['color2'],
+    'Athulya P J': colors_d['color3'],
+    'Abdul Muhsin K': colors_d['color4'],
+    'Bincy Babu': colors_d['color5'],
+    'Jobin John Mathew': colors_d['color6'],
+    'Sourav Rajeev K': colors_d['color7'],
+    'Vishnu Vijayan': colors_d['color8'],
+    'Joyael Jose': colors_d['color9'],
+    'joyael': colors_d['color10'],
+}
+statuses_color_map = {
+    'Abhijith Haridas': colors_d['color1'],
+    'Albin Joseph': colors_d['color2'],
+    'Athulya P J': colors_d['color3'],
+    'Abdul Muhsin K': colors_d['color4'],
+    'Bincy Babu': colors_d['color5'],
+    'Jobin John Mathew': colors_d['color6'],
+    'Sourav Rajeev K': colors_d['color7'],
+    'Vishnu Vijayan': colors_d['color8'],
+    'Joyael Jose': colors_d['color9'],
+    'joyael': colors_d['color10'],
+}
+
+
+def set_data_validation_assignees(sheet_id,start_row_index_,start_col_index,issues_count,body,service):
+    # Only proceed if sheet_id is found
+    if sheet_id is not None:
+        # Calculate the range for data validation
+        start_row_index = start_row_index_ - 1 # (0-based)
+        end_row_index = start_row_index + issues_count
+        start_column_index = start_col_index + 1 
+        end_column_index = start_column_index + 1
+
+        # Extract assignee names from each issue (column 2, index 1)
+        dropdown_values = list({row[1] for row in body})  # Use a set for uniqueness
+        collaborators = get_github_collaborators()
+
+        # Prepare data validation values
+        validation_values = [{'userEnteredValue': name} for name in collaborators]
+
+        # Prepare the request for data validation
+        request = {
+            "setDataValidation": {
+                "range": {
+                    "sheetId": sheet_id,
+                    "startRowIndex": start_row_index,
+                    "endRowIndex": end_row_index,
+                    "startColumnIndex": start_column_index,
+                    "endColumnIndex": end_column_index
+                },
+                "rule": {
+                    "condition": {
+                        "type": "ONE_OF_LIST",
+                        "values": validation_values
+                    },
+                    "showCustomUi": True,
+                    "strict": False
+                }
+            }
+        }
+
+        # Send the request
+        service.spreadsheets().batchUpdate(
+            spreadsheetId=spreadsheet_id,
+            body={'requests': [request]}
+        ).execute()
+        print('Data validation set for the range.')
+    else:
+        print("Sheet ID not found.")
+    requests = []
+    for assignee, color in assignees_color_map.items():
+        requests.append({
+            "addConditionalFormatRule": {
+                "rule": {
+                    "ranges": [{
+                        "sheetId": sheet_id,
+                        "startRowIndex": start_row_index,
+                        "endRowIndex": end_row_index,
+                        "startColumnIndex": start_column_index,
+                        "endColumnIndex": end_column_index
+                    }],
+                    "booleanRule": {
+                        "condition": {
+                            "type": "TEXT_EQ",
+                            "values": [{"userEnteredValue": assignee}]
+                        },
+                        "format": {
+                            "backgroundColor": color['back_color'],
+                            "textFormat": {
+                                "foregroundColor": color['front_color'],
+                                "bold": False
+                            }
+                        }
+                    }
+                },
+                "index": 0
+            }
+        })
+
+    # Apply conditional formatting rules
+    service.spreadsheets().batchUpdate(
+        spreadsheetId=spreadsheet_id,
+        body={'requests': requests}
+    ).execute()
+    print("Conditional formatting rules applied.")
+
+def set_data_validation_statuses(sheet_id,start_row_index_,start_col_index,issues_count,body,service):
+    # Only proceed if sheet_id is found
+    if sheet_id is not None:
+        # Calculate the range for data validation
+        start_row_index = start_row_index_ - 1 # (0-based)
+        end_row_index = start_row_index + issues_count
+        start_column_index = start_col_index + 5
+        end_column_index = start_column_index + 1
+
+        status_options = set(list({row[5] for row in body}))
+
+        # Prepare data validation values
+        validation_values = [{'userEnteredValue': name} for name in status_options]
+
+        # Prepare the request for data validation
+        request = {
+            "setDataValidation": {
+                "range": {
+                    "sheetId": sheet_id,
+                    "startRowIndex": start_row_index,
+                    "endRowIndex": end_row_index,
+                    "startColumnIndex": start_column_index,
+                    "endColumnIndex": end_column_index
+                },
+                "rule": {
+                    "condition": {
+                        "type": "ONE_OF_LIST",
+                        "values": validation_values
+                    },
+                    "showCustomUi": True,
+                    "strict": False
+                }
+            }
+        }
+
+        # Send the request
+        service.spreadsheets().batchUpdate(
+            spreadsheetId=spreadsheet_id,
+            body={'requests': [request]}
+        ).execute()
+        print('Data validation set for the range.')
+    else:
+        print("Sheet ID not found.")
+
+    requests = []
+    for assignee, color in statuses_color_map.items():
+        requests.append({
+            "addConditionalFormatRule": {
+                "rule": {
+                    "ranges": [{
+                        "sheetId": sheet_id,
+                        "startRowIndex": start_row_index,
+                        "endRowIndex": end_row_index,
+                        "startColumnIndex": start_column_index,
+                        "endColumnIndex": end_column_index
+                    }],
+                    "booleanRule": {
+                        "condition": {
+                            "type": "TEXT_EQ",
+                            "values": [{"userEnteredValue": assignee}]
+                        },
+                        "format": {
+                            "backgroundColor": color['back_color'],
+                            "textFormat": {
+                                "foregroundColor": color['front_color'],
+                                "bold": False
+                            }
+                        }
+                    }
+                },
+                "index": 0
+            }
+        })
+
+    # Apply conditional formatting rules
+    service.spreadsheets().batchUpdate(
+        spreadsheetId=spreadsheet_id,
+        body={'requests': requests}
+    ).execute()
+    print("Conditional formatting rules applied.")
 
 def update_google_sheet(service, issues):
     """Update Google Sheet with GitHub issues"""
     body = []
     counter = 1
     for issue in issues:
-        assignee_full_name = get_github_user_full_name(issue['assignee']['login']) if issue['assignee'] else ''
-        label_with_zero = next((label['name'] for label in issue['labels'] if '0' in label['name']), '')
+        issue_number = issue['number']
+        project_status = get_issue_by_number(issue_number)
+        print("Project status : ", project_status)
+        print("Assignees : ", issue['assignees'])
+        assignees_full_names = []
+        for assignee in issue['assignees']:
+            assignee_full_name = get_github_user_full_name(assignee['login']) if issue['assignee'] else ''
+            assignees_full_names.append(assignee_full_name)
+        assignee_dropdown_values = assignees_full_names  # list of names
+        assignee_cell_value = ", ".join(assignee_dropdown_values)  # display in cell
+
         role = "_"
         row = [
             counter,
-            assignee_full_name,
+            assignee_cell_value,
             role,
             f"{issue['title']} #{issue['number']}",
             issue['html_url'],
-            label_with_zero
+            project_status
         ]
         body.append(row)
         counter+=1
@@ -60,6 +354,26 @@ def update_google_sheet(service, issues):
     result = service.spreadsheets().values().update(
         spreadsheetId=spreadsheet_id, range=range_name,
         valueInputOption=value_input_option, body={'values': body}).execute()
+    
+    # Extract sheet name and starting row number from range_name like 'Sheet12!B5:G'
+    match = re.match(r'(.*?)!([A-Z]+)(\d+):[A-Z]+', range_name)
+    if match:
+        sheet_name, start_col_letter, start_row_str = match.groups()
+        start_row_index = int(start_row_str)
+        start_col_index = ord(start_col_letter.upper()) - ord('A')
+    else:
+        raise ValueError("Invalid range_name format")
+
+    # Get sheetId using sheet name
+    sheet_metadata = service.spreadsheets().get(spreadsheetId=spreadsheet_id).execute()
+    sheet_id = next(
+        (s['properties']['sheetId'] for s in sheet_metadata['sheets']
+        if s['properties']['title'] == sheet_name),
+        None
+    )
+    issues_count=len(issues)
+    set_data_validation_assignees(sheet_id,start_row_index,start_col_index,issues_count,body,service)
+    set_data_validation_statuses(sheet_id,start_row_index,start_col_index,issues_count,body,service)
     print(f'{result.get("updatedCells")} cells updated.')
 
 def main():
@@ -70,8 +384,12 @@ def main():
             creds = pickle.load(token)
     if not creds or not creds.valid:
         if creds and creds.expired and creds.refresh_token:
-            creds.refresh(Request())
-        else:
+            try:
+                creds.refresh(Request())
+            except Exception as e:
+                print(f"Refresh failed: {e}. Re-running authentication flow.")
+                creds = None  # force new login below
+        if not creds:
             flow = InstalledAppFlow.from_client_secrets_file(
                 credentials_path, scopes)
             creds = flow.run_local_server(port=0)
