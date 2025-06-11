@@ -114,50 +114,6 @@ def get_issue_by_number(issue_number):
     project_status = project_status.title()
     return project_status
 
-#Define color mapping for each assignee
-colors_d = {
-    'color1': {'back_color': {'red': 0.91, 'green': 0.92, 'blue': 0.93}, 'front_color': {'red': 0.33, 'green': 0.41, 'blue': 0.56}},
-    'color2': {'back_color': {'red': 1.0, 'green': 0.81, 'blue': 0.78}, 'front_color': {'red': 0.7, 'green': 0.05, 'blue': 0.03}},
-    'color3': {'back_color': {'red': 1.0, 'green': 0.78, 'blue': 0.67}, 'front_color': {'red': 0.46, 'green': 0.22, 'blue': 0.0}},
-    'color4': {'back_color': {'red': 1.0, 'green': 0.9, 'blue': 0.63}, 'front_color': {'red': 0.29, 'green': 0.22, 'blue': 0.13}},
-    'color5': {'back_color': {'red': 0.83, 'green': 0.92, 'blue': 0.74}, 'front_color': {'red': 0.49, 'green': 0.73, 'blue': 0.57}},
-    'color6': {'back_color': {'red': 0.75, 'green': 0.87, 'blue': 0.96}, 'front_color': {'red': 0.13, 'green': 0.33, 'blue': 0.54}},
-    'color7': {'back_color': {'red': 0.78, 'green': 0.85, 'blue': 0.88}, 'front_color': {'red': 0.13, 'green': 0.33, 'blue': 0.54}},
-    'color8': {'back_color': {'red': 0.9, 'green': 0.81, 'blue': 0.95}, 'front_color': {'red': 0.56, 'green': 0.2, 'blue': 0.53}},
-    'color9': {'back_color': {'red': 0.24, 'green': 0.24, 'blue': 0.24}, 'front_color': {'red': 0.89, 'green': 0.89, 'blue': 0.89}},
-    'color10': {'back_color': {'red': 0.69, 'green': 0.0, 'blue': 0.01}, 'front_color': {'red': 0.98, 'green': 0.8, 'blue': 0.8}},
-    'color11': {'back_color': {'red': 0.46, 'green': 0.22, 'blue': 0.0}, 'front_color': {'red': 0.46, 'green': 0.22, 'blue': 0.0}},
-    'color12': {'back_color': {'red': 0.28, 'green': 0.22, 'blue': 0.13}, 'front_color': {'red': 0.97, 'green': 0.76, 'blue': 0.64}},
-    'color13': {'back_color': {'red': 0.07, 'green': 0.51, 'blue': 0.29}, 'front_color': {'red': 0.83, 'green': 0.92, 'blue': 0.83}},
-    'color14': {'back_color': {'red': 0.04, 'green': 0.33, 'blue': 0.66}, 'front_color': {'red': 0.89, 'green': 0.87, 'blue': 0.93}},
-    'color15': {'back_color': {'red': 0.13, 'green': 0.33, 'blue': 0.54}, 'front_color': {'red': 0.69, 'green': 0.83, 'blue': 0.93}},
-    'color16': {'back_color': {'red': 0.13, 'green': 0.33, 'blue': 0.54}, 'front_color': {'red': 0.74, 'green': 0.83, 'blue': 0.86}},
-    'color17': {'back_color': {'red': 0.58, 'green': 0.2, 'blue': 0.53}, 'front_color': {'red': 0.78, 'green': 0.78, 'blue': 0.85}}
-}
-assignees_color_map = {
-    'Abhijith Haridas': colors_d['color1'],
-    'Albin Joseph': colors_d['color2'],
-    'Athulya P J': colors_d['color3'],
-    'Abdul Muhsin K': colors_d['color4'],
-    'Bincy Babu': colors_d['color5'],
-    'Jobin John Mathew': colors_d['color6'],
-    'Sourav Rajeev K': colors_d['color7'],
-    'Vishnu Vijayan': colors_d['color8'],
-    'Joyael Jose': colors_d['color9'],
-    'joyael': colors_d['color10'],
-}
-statuses_color_map = {
-    'Abhijith Haridas': colors_d['color1'],
-    'Albin Joseph': colors_d['color2'],
-    'Athulya P J': colors_d['color3'],
-    'Abdul Muhsin K': colors_d['color4'],
-    'Bincy Babu': colors_d['color5'],
-    'Jobin John Mathew': colors_d['color6'],
-    'Sourav Rajeev K': colors_d['color7'],
-    'Vishnu Vijayan': colors_d['color8'],
-    'Joyael Jose': colors_d['color9'],
-    'joyael': colors_d['color10'],
-}
 
 
 def set_data_validation_assignees(sheet_id,start_row_index_,start_col_index,issues_count,body,service):
@@ -205,42 +161,6 @@ def set_data_validation_assignees(sheet_id,start_row_index_,start_col_index,issu
         print('Data validation set for the range.')
     else:
         print("Sheet ID not found.")
-    requests = []
-    for assignee, color in assignees_color_map.items():
-        requests.append({
-            "addConditionalFormatRule": {
-                "rule": {
-                    "ranges": [{
-                        "sheetId": sheet_id,
-                        "startRowIndex": start_row_index,
-                        "endRowIndex": end_row_index,
-                        "startColumnIndex": start_column_index,
-                        "endColumnIndex": end_column_index
-                    }],
-                    "booleanRule": {
-                        "condition": {
-                            "type": "TEXT_EQ",
-                            "values": [{"userEnteredValue": assignee}]
-                        },
-                        "format": {
-                            "backgroundColor": color['back_color'],
-                            "textFormat": {
-                                "foregroundColor": color['front_color'],
-                                "bold": False
-                            }
-                        }
-                    }
-                },
-                "index": 0
-            }
-        })
-
-    # Apply conditional formatting rules
-    service.spreadsheets().batchUpdate(
-        spreadsheetId=spreadsheet_id,
-        body={'requests': requests}
-    ).execute()
-    print("Conditional formatting rules applied.")
 
 def set_data_validation_statuses(sheet_id,start_row_index_,start_col_index,issues_count,body,service):
     # Only proceed if sheet_id is found
@@ -286,42 +206,6 @@ def set_data_validation_statuses(sheet_id,start_row_index_,start_col_index,issue
     else:
         print("Sheet ID not found.")
 
-    requests = []
-    for assignee, color in statuses_color_map.items():
-        requests.append({
-            "addConditionalFormatRule": {
-                "rule": {
-                    "ranges": [{
-                        "sheetId": sheet_id,
-                        "startRowIndex": start_row_index,
-                        "endRowIndex": end_row_index,
-                        "startColumnIndex": start_column_index,
-                        "endColumnIndex": end_column_index
-                    }],
-                    "booleanRule": {
-                        "condition": {
-                            "type": "TEXT_EQ",
-                            "values": [{"userEnteredValue": assignee}]
-                        },
-                        "format": {
-                            "backgroundColor": color['back_color'],
-                            "textFormat": {
-                                "foregroundColor": color['front_color'],
-                                "bold": False
-                            }
-                        }
-                    }
-                },
-                "index": 0
-            }
-        })
-
-    # Apply conditional formatting rules
-    service.spreadsheets().batchUpdate(
-        spreadsheetId=spreadsheet_id,
-        body={'requests': requests}
-    ).execute()
-    print("Conditional formatting rules applied.")
 
 def update_google_sheet(service, issues):
     """Update Google Sheet with GitHub issues"""
