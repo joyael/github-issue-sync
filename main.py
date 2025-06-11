@@ -13,7 +13,7 @@ github_token = os.getenv('GITHUB_TOKEN')
 github_repo_owner = os.getenv('GITHUB_REPO_OWNER')
 github_repo_name = os.getenv('GITHUB_REPO_NAME')
 
-scopes = os.getenv('SCOPES')
+scopes = os.getenv('SCOPES').split(',') if os.getenv('SCOPES') else []
 spreadsheet_id = os.getenv('SPREADSHEET_ID')
 range_name = os.getenv('RANGE_NAME')
 
@@ -126,7 +126,6 @@ def set_data_validation_assignees(sheet_id,start_row_index_,start_col_index,issu
         end_column_index = start_column_index + 1
 
         # Extract assignee names from each issue (column 2, index 1)
-        dropdown_values = list({row[1] for row in body})  # Use a set for uniqueness
         collaborators = get_github_collaborators()
 
         # Prepare data validation values
@@ -171,7 +170,7 @@ def set_data_validation_statuses(sheet_id,start_row_index_,start_col_index,issue
         start_column_index = start_col_index + 5
         end_column_index = start_column_index + 1
 
-        status_options = set(list({row[5] for row in body}))
+        status_options = set(row[5] for row in body)
 
         # Prepare data validation values
         validation_values = [{'userEnteredValue': name} for name in status_options]
@@ -214,16 +213,18 @@ def update_google_sheet(service, issues):
     for issue in issues:
         issue_number = issue['number']
         project_status = get_issue_by_number(issue_number)
+        if project_status == "Backlog":
+            continue
         print("Project status : ", project_status)
         print("Assignees : ", issue['assignees'])
         assignees_full_names = []
         for assignee in issue['assignees']:
-            assignee_full_name = get_github_user_full_name(assignee['login']) if issue['assignee'] else ''
+            assignee_full_name = get_github_user_full_name(assignee['login']) if assignee else ''
             assignees_full_names.append(assignee_full_name)
         assignee_dropdown_values = assignees_full_names  # list of names
         assignee_cell_value = ", ".join(assignee_dropdown_values)  # display in cell
 
-        role = "_"
+        role = "_" #It is a placeholder value for the field role which we are not using
         row = [
             counter,
             assignee_cell_value,
@@ -255,7 +256,7 @@ def update_google_sheet(service, issues):
         if s['properties']['title'] == sheet_name),
         None
     )
-    issues_count=len(issues)
+    issues_count=len(body)
     set_data_validation_assignees(sheet_id,start_row_index,start_col_index,issues_count,body,service)
     set_data_validation_statuses(sheet_id,start_row_index,start_col_index,issues_count,body,service)
     print(f'{result.get("updatedCells")} cells updated.')
