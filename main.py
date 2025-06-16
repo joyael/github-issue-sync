@@ -7,17 +7,26 @@ from google.auth.transport.requests import Request
 import pickle
 from dotenv import load_dotenv
 import re
+import sys
+import datetime
+import calendar
+import utils
+import sheet_functions
 
 load_dotenv('./config/.env')
 github_token = os.getenv('GITHUB_TOKEN')
 github_repo_owner = os.getenv('GITHUB_REPO_OWNER')
 github_repo_name = os.getenv('GITHUB_REPO_NAME')
+github_project_title = os.getenv('GITHUB_PROJECT_TITLE')
 
 scopes = os.getenv('SCOPES').split(',') if os.getenv('SCOPES') else []
 spreadsheet_id = os.getenv('SPREADSHEET_ID')
 range_name = os.getenv('RANGE_NAME')
 
 credentials_path = os.getenv('CREDENTIALS_PATH')
+
+mod = "current"
+
 
 def get_github_user_full_name(username):
     url = f"https://api.github.com/users/{username}"
@@ -94,29 +103,34 @@ def get_issue_by_number(issue_number):
     response = requests.post(graphql_url, json={'query': query}, headers=headers)
     result = response.json()['data']['repository']['issue']
     project_status = None
-    
+    project_found = False
     if result is not None and 'projectItems' in result and result['projectItems'] is not None:
         for node in result['projectItems']['nodes']:
-            for field_value in node['fieldValues']['nodes']:
-                if 'name' in field_value:
-                    project_status = field_value['name']
+            project_title = node['project']['title']
+            if project_title == github_project_title:
+                project_found = True
+                for field_value in node['fieldValues']['nodes']:
+                    if 'name' in field_value:
+                        project_status = field_value['name']
+                        break
+                if project_status:
                     break
-            if project_status:
-                break
     else:
-        return "undefined"
-    if project_status == 'Ready':
+        return "project_not_found"
+    if not project_found:
+        return "project_not_found"
+    if project_status == 'Ready' or project_status == 'Todo':
         project_status = 'Pending'
     if project_status == 'In Review':
         project_status = 'Review'
     if project_status == 'Done':
         project_status = 'Estimation Required'
+    if project_status == None:
+        return "No Status"
     project_status = project_status.title()
     return project_status
 
-
-
-def set_data_validation_assignees(sheet_id,start_row_index_,start_col_index,issues_count,body,service):
+def set_data_validation_assignees(sheet_id,start_row_index_,start_col_index,issues_count,service):
     # Only proceed if sheet_id is found
     if sheet_id is not None:
         # Calculate the range for data validation
@@ -206,58 +220,96 @@ def set_data_validation_statuses(sheet_id,start_row_index_,start_col_index,issue
         print("Sheet ID not found.")
 
 
-def update_google_sheet(service, issues):
+def update_google_sheet(service, issues, conclude):
     """Update Google Sheet with GitHub issues"""
     body = []
-    counter = 1
+    counter = 0
+    sheet_counter = 1
+    to_merge=[]
+    previous_issues_list = utils.get_previous_issues_list(service, spreadsheet_id, utils.get_sheet_name())
+    print(previous_issues_list)
     for issue in issues:
         issue_number = issue['number']
         project_status = get_issue_by_number(issue_number)
+        if int(issue_number) in previous_issues_list:
+            continue
+        if conclude==True and project_status != "Estimation Required":
+            continue
         if project_status == "Backlog":
             continue
+        if project_status == "project_not_found":
+            continue
+        if mod == "new_month" and project_status == "Estimation Required":
+            continue
+        if project_status == "Estimation Required" and issue['state']=='open':
+            project_status == "Pending"
         print("Project status : ", project_status)
         print("Assignees : ", issue['assignees'])
         assignees_full_names = []
         for assignee in issue['assignees']:
             assignee_full_name = get_github_user_full_name(assignee['login']) if assignee else ''
             assignees_full_names.append(assignee_full_name)
-        assignee_dropdown_values = assignees_full_names  # list of names
-        assignee_cell_value = ", ".join(assignee_dropdown_values)  # display in cell
-
-        role = "_" #It is a placeholder value for the field role which we are not using
-        row = [
-            counter,
-            assignee_cell_value,
-            role,
-            f"{issue['title']} #{issue['number']}",
-            issue['html_url'],
-            project_status
-        ]
-        body.append(row)
-        counter+=1
-    value_input_option = 'USER_ENTERED'
-    result = service.spreadsheets().values().update(
-        spreadsheetId=spreadsheet_id, range=range_name,
-        valueInputOption=value_input_option, body={'values': body}).execute()
+        assignees_count = len(assignees_full_names)
+        if assignees_count>1:
+            merge={'startrowoffset':counter,'endrowoffset':assignees_count,'startcoloffset':0}
+            to_merge.append(merge)
+            merge={'startrowoffset':counter,'endrowoffset':assignees_count,'startcoloffset':3}
+            to_merge.append(merge)
+            merge={'startrowoffset':counter,'endrowoffset':assignees_count,'startcoloffset':4}
+            to_merge.append(merge)
+        
+        if assignees_count == 0:
+            role = "_" #It is a placeholder value for the field role which we are not using
+            row = [
+                sheet_counter,
+                "",
+                role,
+                f"{issue['title']} #{issue['number']}",
+                issue['html_url'],
+                project_status
+            ]
+            body.append(row)
+            counter+=1
+        for assignee_name in assignees_full_names:
+            role = "_" #It is a placeholder value for the field role which we are not using
+            row = [
+                sheet_counter,
+                assignee_name,
+                role,
+                f"{issue['title']} #{issue['number']}",
+                issue['html_url'],
+                project_status
+            ]
+            body.append(row)
+            counter+=1
+        sheet_counter+=1
     
-    # Extract sheet name and starting row number from range_name like 'Sheet12!B5:G'
-    match = re.match(r'(.*?)!([A-Z]+)(\d+):[A-Z]+', range_name)
+    match = re.match(r'(.*?)!([A-Z]+)(\d+):[A-Z]+', utils.get_range_name())
     if match:
         sheet_name, start_col_letter, start_row_str = match.groups()
         start_row_index = int(start_row_str)
         start_col_index = ord(start_col_letter.upper()) - ord('A')
     else:
         raise ValueError("Invalid range_name format")
-
-    # Get sheetId using sheet name
     sheet_metadata = service.spreadsheets().get(spreadsheetId=spreadsheet_id).execute()
     sheet_id = next(
         (s['properties']['sheetId'] for s in sheet_metadata['sheets']
         if s['properties']['title'] == sheet_name),
         None
     )
+    print("Sheet ID : ",sheet_id)
+    rows_len = counter if counter > 100 else 100
+    sheet_functions.clear_range(service, sheet_id, start_row_index, start_row_index + rows_len, start_col_index, start_col_index + 7, spreadsheet_id)
+    sheet_functions.unmerge_cells(service, sheet_id, spreadsheet_id)
+    body = sorted(body, key=lambda x: x[2])
+    value_input_option = 'USER_ENTERED'
+    result = service.spreadsheets().values().update(
+        spreadsheetId=spreadsheet_id, range=utils.get_range_name(),
+        valueInputOption=value_input_option, body={'values': body}).execute()
     issues_count=len(body)
-    set_data_validation_assignees(sheet_id,start_row_index,start_col_index,issues_count,body,service)
+
+    sheet_functions.merge_sheet_cells(sheet_id,start_row_index,start_col_index,to_merge,service, spreadsheet_id)
+    set_data_validation_assignees(sheet_id,start_row_index,start_col_index,issues_count ,service)
     set_data_validation_statuses(sheet_id,start_row_index,start_col_index,issues_count,body,service)
     print(f'{result.get("updatedCells")} cells updated.')
 
@@ -282,7 +334,14 @@ def main():
             pickle.dump(creds, token)
     service = build('sheets', 'v4', credentials=creds)
     issues = get_github_issues()
-    update_google_sheet(service, issues)
+    for arg in sys.argv:
+        if arg == 'new_month':
+            update_google_sheet(service, issues, conclude=True)
+            new_range_name = sheet_functions.process_new_month(service, spreadsheet_id)
+            utils.update_env_variable('RANGE_NAME', new_range_name)
+            global mod
+            mod = "new_month"
+    update_google_sheet(service, issues,conclude=False)
 
 if __name__ == '__main__':
     main()
