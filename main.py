@@ -55,13 +55,22 @@ def get_github_collaborators():
     return collaborator_names
 
 def get_github_issues():
-    """Get GitHub issues using the GitHub API"""
-    url = f'https://api.github.com/repos/{github_repo_owner}/{github_repo_name}/issues?state=all'
-    headers = {'Authorization': f'Bearer {github_token}'}
-    response = requests.get(url, headers=headers)
-    issues = response.json()
+        """Get all GitHub issues using the GitHub API with pagination"""
+    issues = []
+    page = 1
+    per_page = 100  # Max allowed by GitHub API
+    while True:
+        url = f'https://api.github.com/repos/{github_repo_owner}/{github_repo_name}/issues?state=all&per_page={per_page}&page={page}'
+        headers = {'Authorization': f'Bearer {github_token}'}
+        response = requests.get(url, headers=headers)
+        page_issues = response.json()
+        if not page_issues or 'message' in page_issues:
+            break  # Stop if no more issues or an error occurred
+        issues.extend(page_issues)
+        page += 1
+    print("Number of Issues is:", len(issues))
     filtered_issues = [issue for issue in issues if issue['node_id'].startswith('I_')]
-    print("Git API Response : " , response.json())
+    print("Git API Response:", filtered_issues)
     return filtered_issues
 
 
