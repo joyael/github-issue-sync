@@ -2,6 +2,8 @@ import datetime
 import calendar
 import os
 import utils
+import sys
+from googleapiclient.errors import HttpError
 
 spreadsheet_id = os.getenv('SPREADSHEET_ID')
 
@@ -38,10 +40,16 @@ def duplicate_sheet(service, spreadsheet_id, source_sheet_name, new_sheet_name):
         }]
     }
 
-    response = service.spreadsheets().batchUpdate(
-        spreadsheetId=spreadsheet_id, body=body).execute()
-    return response
-
+    try :    
+        response = service.spreadsheets().batchUpdate(
+            spreadsheetId=spreadsheet_id, body=body).execute()
+        return response
+    except HttpError as error:
+        if error.resp.status == 400 and 'duplicateSheet' in error._get_reason():
+            print(f"This is not new month. Sheet '{new_sheet_name}' already exists.")
+            sys.exit(1)
+        else:
+            raise
 
 def merge_sheet_cells(sheet_id,start_row_index_,start_col_index,merge_data,service, spreadsheet_id):
     for merge in merge_data:
