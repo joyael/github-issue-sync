@@ -55,7 +55,7 @@ def get_github_collaborators():
     return collaborator_names
 
 def get_github_issues():
-        """Get all GitHub issues using the GitHub API with pagination"""
+    """Get all GitHub issues using the GitHub API with pagination"""
     issues = []
     page = 1
     per_page = 100  # Max allowed by GitHub API
