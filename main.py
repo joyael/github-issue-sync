@@ -27,6 +27,7 @@ credentials_path = os.getenv('CREDENTIALS_PATH')
 
 mod = "current"
 
+predefined_status_values = ['In progress','In review','Todo','Backlog','Ready','Done','On Pause','Blocked', 'Client Action Needed','Testing']
 
 def get_github_user_full_name(username):
     url = f"https://api.github.com/users/{username}"
@@ -120,8 +121,9 @@ def get_issue_by_number(issue_number):
                 project_found = True
                 for field_value in node['fieldValues']['nodes']:
                     if 'name' in field_value:
-                        project_status = field_value['name']
-                        break
+                        if field_value['name'] in predefined_status_values:
+                            project_status = field_value['name']
+                            break
                 if project_status:
                     break
     else:
@@ -130,7 +132,7 @@ def get_issue_by_number(issue_number):
         return "project_not_found"
     if project_status == 'Ready' or project_status == 'Todo':
         project_status = 'Pending'
-    if project_status == 'In Review':
+    if project_status == 'In review':
         project_status = 'Review'
     if project_status == 'Done':
         project_status = 'Estimation Required'
@@ -344,8 +346,9 @@ def main():
     service = build('sheets', 'v4', credentials=creds)
     issues = get_github_issues()
     for arg in sys.argv:
-        if arg == 'new_month':
-            update_google_sheet(service, issues, conclude=True)
+        if arg == 'new_month' or arg == 'new_month_new_spreadsheet':
+            if arg == 'new_month':
+                update_google_sheet(service, issues, conclude=True)
             new_range_name = sheet_functions.process_new_month(service, spreadsheet_id)
             utils.update_env_variable('RANGE_NAME', new_range_name)
             global mod
