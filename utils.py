@@ -77,7 +77,7 @@ def get_previous_issues_list(service, spreadsheet_id, current_sheet_name):
             continue
         
         # Define range for column E (index 4, i.e. column 'E')
-        range_str = f"{sheet_name}!E5:E300"
+        range_str = f"{sheet_name}!E5:E"
         
         try:
             result = service.spreadsheets().values().get(

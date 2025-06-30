@@ -28,6 +28,29 @@ credentials_path = os.getenv('CREDENTIALS_PATH')
 mod = "current"
 
 predefined_status_values = ['In progress','In review','Todo','Backlog','Ready','Done','On Pause','Blocked', 'Client Action Needed','Testing']
+role_values = {
+    'Abdul Muhsin K': 'Backend Dev',
+    'Albin Joseph' : 'Backend Dev',
+    'Joyael Jose' : 'Backend Dev',
+    'Sourav Rajeev' : 'Frontend Dev',
+    'Jobin John' : 'Frontend Dev',
+    'Vishnu Vijayan' : 'UI/UX Designer',
+    'Abhirami' : 'QA',
+}
+assignee_names = {
+    'albinJoseph1' : 'Albin Joseph',
+    'jobinjohn4113112' : 'Jobin John',
+    'abdul-yatnam':'Abdul Muhsin K',
+    'brandadapt' : 'Brandadapt',
+    'bincybabu3108' : 'Bincy Babu',
+    'Jishnu-10' : 'Jishnu',
+    'SouravRajeevK': 'Sourav Rajeev',
+    'AthulyaPJ': 'Athulya P J',
+    'Vishnuvijayan5': 'Vishnu Vijayan',
+    'joyaeljose-yatnam': 'Joyael Jose',
+    'AbhijithHaridas': 'Abhijith',
+    'abhirami-kv': 'Abhirami'
+}
 
 def get_github_user_full_name(username):
     url = f"https://api.github.com/users/{username}"
@@ -239,12 +262,14 @@ def update_google_sheet(service, issues, conclude):
     to_merge=[]
     previous_issues_list = utils.get_previous_issues_list(service, spreadsheet_id, utils.get_sheet_name())
     print(previous_issues_list)
+    issues = sorted(issues, key=lambda x: x['number'])
     for issue in issues:
         issue_number = issue['number']
         project_status = get_issue_by_number(issue_number)
+        issue['project_status'] = project_status
         if int(issue_number) in previous_issues_list:
             continue
-        if conclude==True and project_status != "Estimation Required":
+        if conclude==True and issue['state'] != 'closed':
             continue
         if project_status == "Backlog":
             continue
@@ -258,7 +283,9 @@ def update_google_sheet(service, issues, conclude):
         print("Assignees : ", issue['assignees'])
         assignees_full_names = []
         for assignee in issue['assignees']:
-            assignee_full_name = get_github_user_full_name(assignee['login']) if assignee else ''
+            assignee_full_name = assignee_names.get(assignee['login'],'not_found')
+            if assignee_full_name == 'not_found':
+                assignee_full_name = get_github_user_full_name(assignee['login']) if assignee else ''
             assignees_full_names.append(assignee_full_name)
         assignees_count = len(assignees_full_names)
         if assignees_count>1:
@@ -282,7 +309,7 @@ def update_google_sheet(service, issues, conclude):
             body.append(row)
             counter+=1
         for assignee_name in assignees_full_names:
-            role = "_" #It is a placeholder value for the field role which we are not using
+            role = role_values.get(assignee_name, "_")
             row = [
                 sheet_counter,
                 assignee_name,
@@ -310,9 +337,9 @@ def update_google_sheet(service, issues, conclude):
     )
     print("Sheet ID : ",sheet_id)
     rows_len = counter if counter > 100 else 100
-    sheet_functions.clear_range(service, sheet_id, start_row_index, start_row_index + rows_len, start_col_index, start_col_index + 7, spreadsheet_id)
+    sheet_functions.clear_range(service, sheet_id, start_row_index, start_row_index + 700, start_col_index, start_col_index + 7, spreadsheet_id)
     sheet_functions.unmerge_cells(service, sheet_id, spreadsheet_id)
-    body = sorted(body, key=lambda x: x[2])
+    body = sorted(body, key=lambda x: x[0])
     value_input_option = 'USER_ENTERED'
     result = service.spreadsheets().values().update(
         spreadsheetId=spreadsheet_id, range=utils.get_range_name(),
@@ -320,9 +347,27 @@ def update_google_sheet(service, issues, conclude):
     issues_count=len(body)
 
     sheet_functions.merge_sheet_cells(sheet_id,start_row_index,start_col_index,to_merge,service, spreadsheet_id)
-    set_data_validation_assignees(sheet_id,start_row_index,start_col_index,issues_count ,service)
-    set_data_validation_statuses(sheet_id,start_row_index,start_col_index,issues_count,body,service)
+    # set_data_validation_assignees(sheet_id,start_row_index,start_col_index,issues_count ,service)
+    # set_data_validation_statuses(sheet_id,start_row_index,start_col_index,issues_count,body,service)
     print(f'{result.get("updatedCells")} cells updated.')
+    output_issues_no = sheet_counter-1
+    backlog_issues_no = 0
+    no_project_issues_no = 0
+    previous_issues_no = len(previous_issues_list)
+
+    for issue in issues:
+        if issue['state']=='closed':
+            if issue['project_status'] == 'Backlog':
+                backlog_issues_no+=1
+                print("Backlog issue found , issue number : ",issue['number'])
+            elif issue['project_status'] == 'project_not_found':
+                no_project_issues_no+=1       
+                print("No project issue found , issue number : ",issue['number'])
+
+    print("Output issues count : ", output_issues_no)
+    print("Backlog issues count : ", backlog_issues_no)
+    print("No project issues count : ", no_project_issues_no)
+    print("Previous issues count : ", previous_issues_no)
 
 def main():
     """Main function"""
@@ -345,15 +390,21 @@ def main():
             pickle.dump(creds, token)
     service = build('sheets', 'v4', credentials=creds)
     issues = get_github_issues()
+    global mod
+    month_end = False
     for arg in sys.argv:
         if arg == 'new_month' or arg == 'new_month_new_spreadsheet':
             if arg == 'new_month':
                 update_google_sheet(service, issues, conclude=True)
             new_range_name = sheet_functions.process_new_month(service, spreadsheet_id)
             utils.update_env_variable('RANGE_NAME', new_range_name)
-            global mod
             mod = "new_month"
-    update_google_sheet(service, issues,conclude=False)
+        if arg == 'month_end':
+            update_google_sheet(service, issues, conclude=True)
+            month_end = True
+            mod = "month_end"
+    if not month_end:
+        update_google_sheet(service, issues,conclude=False)
 
 if __name__ == '__main__':
     main()
