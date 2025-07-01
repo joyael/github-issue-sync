@@ -66,9 +66,6 @@ def get_github_user_full_name(username):
         print(f"Failed to fetch user {username}: {response.status_code} - {response.text}")
         return username
 
-# Issue fields to update in Google Sheets
-ISSUE_FIELDS = ['number', 'assignee', 'title', 'html_url']
-
 def get_github_collaborators():
     """Get GitHub collaborators using the GitHub API"""
     url = f'https://api.github.com/repos/{github_repo_owner}/{github_repo_name}/collaborators'
@@ -164,96 +161,6 @@ def get_issue_by_number(issue_number):
     project_status = project_status.title()
     return project_status
 
-def set_data_validation_assignees(sheet_id,start_row_index_,start_col_index,issues_count,service):
-    # Only proceed if sheet_id is found
-    if sheet_id is not None:
-        # Calculate the range for data validation
-        start_row_index = start_row_index_ - 1 # (0-based)
-        end_row_index = start_row_index + issues_count
-        start_column_index = start_col_index + 1 
-        end_column_index = start_column_index + 1
-
-        # Extract assignee names from each issue (column 2, index 1)
-        collaborators = get_github_collaborators()
-
-        # Prepare data validation values
-        validation_values = [{'userEnteredValue': name} for name in collaborators]
-
-        # Prepare the request for data validation
-        request = {
-            "setDataValidation": {
-                "range": {
-                    "sheetId": sheet_id,
-                    "startRowIndex": start_row_index,
-                    "endRowIndex": end_row_index,
-                    "startColumnIndex": start_column_index,
-                    "endColumnIndex": end_column_index
-                },
-                "rule": {
-                    "condition": {
-                        "type": "ONE_OF_LIST",
-                        "values": validation_values
-                    },
-                    "showCustomUi": True,
-                    "strict": False
-                }
-            }
-        }
-
-        # Send the request
-        service.spreadsheets().batchUpdate(
-            spreadsheetId=spreadsheet_id,
-            body={'requests': [request]}
-        ).execute()
-        print('Data validation set for the range.')
-    else:
-        print("Sheet ID not found.")
-
-def set_data_validation_statuses(sheet_id,start_row_index_,start_col_index,issues_count,body,service):
-    # Only proceed if sheet_id is found
-    if sheet_id is not None:
-        # Calculate the range for data validation
-        start_row_index = start_row_index_ - 1 # (0-based)
-        end_row_index = start_row_index + issues_count
-        start_column_index = start_col_index + 5
-        end_column_index = start_column_index + 1
-
-        status_options = set(row[5] for row in body)
-
-        # Prepare data validation values
-        validation_values = [{'userEnteredValue': name} for name in status_options]
-
-        # Prepare the request for data validation
-        request = {
-            "setDataValidation": {
-                "range": {
-                    "sheetId": sheet_id,
-                    "startRowIndex": start_row_index,
-                    "endRowIndex": end_row_index,
-                    "startColumnIndex": start_column_index,
-                    "endColumnIndex": end_column_index
-                },
-                "rule": {
-                    "condition": {
-                        "type": "ONE_OF_LIST",
-                        "values": validation_values
-                    },
-                    "showCustomUi": True,
-                    "strict": False
-                }
-            }
-        }
-
-        # Send the request
-        service.spreadsheets().batchUpdate(
-            spreadsheetId=spreadsheet_id,
-            body={'requests': [request]}
-        ).execute()
-        print('Data validation set for the range.')
-    else:
-        print("Sheet ID not found.")
-
-
 def update_google_sheet(service, issues, conclude):
     """Update Google Sheet with GitHub issues"""
     body = []
@@ -262,7 +169,6 @@ def update_google_sheet(service, issues, conclude):
     to_merge=[]
     previous_issues_list = utils.get_previous_issues_list(service, spreadsheet_id, utils.get_sheet_name())
     print(previous_issues_list)
-    issues = sorted(issues, key=lambda x: x['number'])
     for issue in issues:
         issue_number = issue['number']
         project_status = get_issue_by_number(issue_number)
@@ -278,7 +184,7 @@ def update_google_sheet(service, issues, conclude):
         if mod == "new_month" and project_status == "Estimation Required":
             continue
         if project_status == "Estimation Required" and issue['state']=='open':
-            project_status == "Pending"
+            project_status = "Pending"
         print("Project status : ", project_status)
         print("Assignees : ", issue['assignees'])
         assignees_full_names = []
@@ -336,21 +242,17 @@ def update_google_sheet(service, issues, conclude):
         None
     )
     print("Sheet ID : ",sheet_id)
-    rows_len = counter if counter > 100 else 100
-    sheet_functions.clear_range(service, sheet_id, start_row_index, start_row_index + 700, start_col_index, start_col_index + 7, spreadsheet_id)
+    sheet_functions.clear_range(service, sheet_id, start_row_index, start_col_index, start_col_index + 7, spreadsheet_id)
     sheet_functions.unmerge_cells(service, sheet_id, spreadsheet_id)
     body = sorted(body, key=lambda x: x[0])
     value_input_option = 'USER_ENTERED'
     result = service.spreadsheets().values().update(
         spreadsheetId=spreadsheet_id, range=utils.get_range_name(),
         valueInputOption=value_input_option, body={'values': body}).execute()
-    issues_count=len(body)
 
     sheet_functions.merge_sheet_cells(sheet_id,start_row_index,start_col_index,to_merge,service, spreadsheet_id)
-    # set_data_validation_assignees(sheet_id,start_row_index,start_col_index,issues_count ,service)
-    # set_data_validation_statuses(sheet_id,start_row_index,start_col_index,issues_count,body,service)
     print(f'{result.get("updatedCells")} cells updated.')
-    output_issues_no = sheet_counter-1
+    output_issues_no = len(body)
     backlog_issues_no = 0
     no_project_issues_no = 0
     previous_issues_no = len(previous_issues_list)

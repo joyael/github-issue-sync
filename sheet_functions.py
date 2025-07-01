@@ -95,7 +95,7 @@ def unmerge_cells(service, sheet_id, spreadsheet_id):
     ).execute()
     print("Unmerged all cells in the sheet.")
 
-def clear_range(service, sheet_id, start_row_index, end_row_index, start_col_index, end_col_index, spreadsheet_id):
+def clear_range(service, sheet_id, start_row_index, start_col_index, end_col_index, spreadsheet_id):
     num_rows = end_row_index - start_row_index + 1
     num_cols = end_col_index - start_col_index
 
@@ -113,7 +113,6 @@ def clear_range(service, sheet_id, start_row_index, end_row_index, start_col_ind
                     "range": {
                         "sheetId": sheet_id,
                         "startRowIndex": start_row_index - 1,  # Convert to 0-based index
-                        "endRowIndex": end_row_index,
                         "startColumnIndex": start_col_index,
                         "endColumnIndex": end_col_index
                     },
