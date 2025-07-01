@@ -94,6 +94,16 @@ def get_github_issues():
     print("Git API Response:", filtered_issues)
     return filtered_issues
 
+def get_effective_closed_date(issue):
+    """
+    Returns the closed date of the issue if available,
+    else returns the last date of the current year in ISO format.
+    """
+    if issue.get('closed_at'):
+        return issue['closed_at']
+    else:
+        current_year = datetime.datetime.now().year
+        return f"{current_year}-12-31T23:59:59Z"
 
 graphql_url = 'https://api.github.com/graphql'
 headers = {
@@ -169,6 +179,7 @@ def update_google_sheet(service, issues, conclude):
     to_merge=[]
     previous_issues_list = utils.get_previous_issues_list(service, spreadsheet_id, utils.get_sheet_name())
     print(previous_issues_list)
+    issues = sorted(issues, key=lambda x: get_effective_closed_date(x))
     for issue in issues:
         issue_number = issue['number']
         project_status = get_issue_by_number(issue_number)
@@ -242,9 +253,9 @@ def update_google_sheet(service, issues, conclude):
         None
     )
     print("Sheet ID : ",sheet_id)
-    sheet_functions.clear_range(service, sheet_id, start_row_index, start_col_index, start_col_index + 7, spreadsheet_id)
+    sheet_functions.clear_range(service, sheet_id, start_row_index, start_row_index + 700, start_col_index, start_col_index + 7, spreadsheet_id)
     sheet_functions.unmerge_cells(service, sheet_id, spreadsheet_id)
-    body = sorted(body, key=lambda x: x[0])
+    # body = sorted(body, key=lambda x: x[0])
     value_input_option = 'USER_ENTERED'
     result = service.spreadsheets().values().update(
         spreadsheetId=spreadsheet_id, range=utils.get_range_name(),
@@ -265,6 +276,7 @@ def update_google_sheet(service, issues, conclude):
             elif issue['project_status'] == 'project_not_found':
                 no_project_issues_no+=1       
                 print("No project issue found , issue number : ",issue['number'])
+            print("Issue closed date : ", get_effective_closed_date(issue), "  Issue number : ", issue['number'])
 
     print("Output issues count : ", output_issues_no)
     print("Backlog issues count : ", backlog_issues_no)
