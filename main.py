@@ -277,6 +277,8 @@ def update_google_sheet(service, issues, conclude):
                 no_project_issues_no+=1       
                 print("No project issue found , issue number : ",issue['number'])
             print("Issue closed date : ", get_effective_closed_date(issue), "  Issue number : ", issue['number'])
+        if issue['project_status'] == 'Estimation Required' and issue['state']!='closed':
+            print("Done Issue But not Closed : ",issue['number'])
 
     print("Output issues count : ", output_issues_no)
     print("Backlog issues count : ", backlog_issues_no)
