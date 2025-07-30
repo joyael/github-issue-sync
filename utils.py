@@ -75,6 +75,8 @@ def get_previous_issues_list(service, spreadsheet_id, current_sheet_name):
         sheet_name = sheet['properties']['title']
         if sheet_name == current_sheet_name:
             continue
+        if sheet_name != 'June_2025':
+            continue
         
         # Define range for column E (index 4, i.e. column 'E')
         range_str = f"{sheet_name}!E5:E"

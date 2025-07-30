@@ -36,6 +36,10 @@ role_values = {
     'Jobin John' : 'Frontend Dev',
     'Vishnu Vijayan' : 'UI/UX Designer',
     'Abhirami' : 'QA',
+    'Jishnu' : 'Frontend Dev',
+    'Bincy Babu' : 'Marketing',
+    'Abhijith' : 'DevOps',
+    'Athulya P J' : 'Backend Dev',
 }
 assignee_names = {
     'albinJoseph1' : 'Albin Joseph',
@@ -162,8 +166,12 @@ def get_issue_by_number(issue_number):
         return "project_not_found"
     if project_status == 'Ready' or project_status == 'Todo':
         project_status = 'Pending'
-    if project_status == 'In review':
-        project_status = 'Review'
+    if project_status == 'In review' or project_status == 'Testing':
+        project_status = 'In Progress'
+    if project_status == 'Client Action Needed':
+        project_status = 'Needs Approval'
+    if project_status == 'Blocked' or project_status == 'On Pause':
+        project_status = 'Blocked/Pause'
     if project_status == 'Done':
         project_status = 'Estimation Required'
     if project_status == None:
@@ -177,22 +185,26 @@ def update_google_sheet(service, issues, conclude):
     counter = 0
     sheet_counter = 1
     to_merge=[]
-    previous_issues_list = utils.get_previous_issues_list(service, spreadsheet_id, utils.get_sheet_name())
+    # previous_issues_list = utils.get_previous_issues_list(service, spreadsheet_id, utils.get_sheet_name())
+    # print(previous_issues_list)
+    data = get_current_sheet_done_issues(service, spreadsheet_id, 'July 2025 Split 1  (Till 28th)')
+    previous_issues_list = extract_issue_numbers(data)
     print(previous_issues_list)
     issues = sorted(issues, key=lambda x: get_effective_closed_date(x))
+    #issues = sorted(issues, key=lambda x: x['number'])
     for issue in issues:
         issue_number = issue['number']
         project_status = get_issue_by_number(issue_number)
         issue['project_status'] = project_status
         if int(issue_number) in previous_issues_list:
             continue
-        if conclude==True and issue['state'] != 'closed':
+        if conclude==True and project_status != 'Estimation Required':
             continue
         if project_status == "Backlog":
             continue
         if project_status == "project_not_found":
             continue
-        if mod == "new_month" and project_status == "Estimation Required":
+        if mod == "new_month" and project_status != "Estimation Required":
             continue
         if project_status == "Estimation Required" and issue['state']=='open':
             project_status = "Pending"
@@ -205,6 +217,8 @@ def update_google_sheet(service, issues, conclude):
                 assignee_full_name = get_github_user_full_name(assignee['login']) if assignee else ''
             assignees_full_names.append(assignee_full_name)
         assignees_count = len(assignees_full_names)
+        if 'Brandadapt' in assignees_full_names or assignees_count == 0:
+            continue
         if assignees_count>1:
             merge={'startrowoffset':counter,'endrowoffset':assignees_count,'startcoloffset':0}
             to_merge.append(merge)
@@ -214,7 +228,7 @@ def update_google_sheet(service, issues, conclude):
             to_merge.append(merge)
         
         if assignees_count == 0:
-            role = "_" #It is a placeholder value for the field role which we are not using
+            role = "" #It is a placeholder value for the field role which we are not using
             row = [
                 sheet_counter,
                 "",
@@ -226,7 +240,7 @@ def update_google_sheet(service, issues, conclude):
             body.append(row)
             counter+=1
         for assignee_name in assignees_full_names:
-            role = role_values.get(assignee_name, "_")
+            role = role_values.get(assignee_name, "")
             row = [
                 sheet_counter,
                 assignee_name,
@@ -239,6 +253,117 @@ def update_google_sheet(service, issues, conclude):
             counter+=1
         sheet_counter+=1
     
+    for issue in issues:
+        issue_number = issue['number']
+        project_status = issue['project_status']
+        if int(issue_number) in previous_issues_list:
+            continue
+        if conclude==True and project_status != 'Estimation Required':
+            continue
+        if project_status == "Backlog":
+            continue
+        if project_status == "project_not_found":
+            continue
+        if mod == "new_month" and project_status != "Estimation Required":
+            continue
+        if project_status == "Estimation Required" and issue['state']=='open':
+            project_status = "Pending"
+        print("Project status : ", project_status)
+        print("Assignees : ", issue['assignees'])
+        assignees_full_names = []
+        for assignee in issue['assignees']:
+            assignee_full_name = assignee_names.get(assignee['login'],'not_found')
+            if assignee_full_name == 'not_found':
+                assignee_full_name = get_github_user_full_name(assignee['login']) if assignee else ''
+            assignees_full_names.append(assignee_full_name)
+        assignees_count = len(assignees_full_names)
+        if assignees_count != 0:
+            continue
+        if assignees_count == 0:
+            role = "" #It is a placeholder value for the field role which we are not using
+            row = [
+                sheet_counter,
+                "",
+                role,
+                f"{issue['title']} #{issue['number']}",
+                issue['html_url'],
+                project_status
+            ]
+            body.append(row)
+            counter+=1
+        for assignee_name in assignees_full_names:
+            role = role_values.get(assignee_name, "")
+            row = [
+                sheet_counter,
+                assignee_name,
+                role,
+                f"{issue['title']} #{issue['number']}",
+                issue['html_url'],
+                project_status
+            ]
+            body.append(row)
+            counter+=1
+        sheet_counter+=1
+    
+    for issue in issues:
+        issue_number = issue['number']
+        project_status = issue['project_status']
+        if int(issue_number) in previous_issues_list:
+            continue
+        if conclude==True and project_status != 'Estimation Required':
+            continue
+        if project_status == "Backlog":
+            continue
+        if project_status == "project_not_found":
+            continue
+        if mod == "new_month" and project_status != "Estimation Required":
+            continue
+        if project_status == "Estimation Required" and issue['state']=='open':
+            project_status = "Pending"
+        print("Project status : ", project_status)
+        print("Assignees : ", issue['assignees'])
+        assignees_full_names = []
+        for assignee in issue['assignees']:
+            assignee_full_name = assignee_names.get(assignee['login'],'not_found')
+            if assignee_full_name == 'not_found':
+                assignee_full_name = get_github_user_full_name(assignee['login']) if assignee else ''
+            assignees_full_names.append(assignee_full_name)
+        assignees_count = len(assignees_full_names)
+        if 'Brandadapt' not in assignees_full_names:
+            continue
+        if assignees_count>1:
+            merge={'startrowoffset':counter,'endrowoffset':assignees_count,'startcoloffset':0}
+            to_merge.append(merge)
+            merge={'startrowoffset':counter,'endrowoffset':assignees_count,'startcoloffset':3}
+            to_merge.append(merge)
+            merge={'startrowoffset':counter,'endrowoffset':assignees_count,'startcoloffset':4}
+            to_merge.append(merge)
+        
+        if assignees_count == 0:
+            role = "" #It is a placeholder value for the field role which we are not using
+            row = [
+                sheet_counter,
+                "",
+                role,
+                f"{issue['title']} #{issue['number']}",
+                issue['html_url'],
+                project_status
+            ]
+            body.append(row)
+            counter+=1
+        for assignee_name in assignees_full_names:
+            role = role_values.get(assignee_name, "")
+            row = [
+                sheet_counter,
+                assignee_name,
+                role,
+                f"{issue['title']} #{issue['number']}",
+                issue['html_url'],
+                project_status
+            ]
+            body.append(row)
+            counter+=1
+        sheet_counter+=1
     match = re.match(r'(.*?)!([A-Z]+)(\d+):[A-Z]+', utils.get_range_name())
     if match:
         sheet_name, start_col_letter, start_row_str = match.groups()
@@ -267,8 +392,22 @@ def update_google_sheet(service, issues, conclude):
     backlog_issues_no = 0
     no_project_issues_no = 0
     previous_issues_no = len(previous_issues_list)
+    closed_issues = []
+    output_issues = []
+    for row in body:
+        cell_value = row[3]
+        match = re.search(r'#(\d+)', str(cell_value))
+        if match:
+            issue_number = int(match.group(1))
+            output_issues.append(issue_number)
 
     for issue in issues:
+        if issue['state']=='closed':
+            closed_issues.append(issue['number'])
+        if issue['state']=='closed' and issue['project_status']!='Estimation Required':
+            print("Closed but not Done Issue : ", issue['number'])
+        if issue['state']!='closed' and issue['project_status']=='Estimation Required':
+            print("Not Closed but  Done Issue : ", issue['number'])
         if issue['state']=='closed':
             if issue['project_status'] == 'Backlog':
                 backlog_issues_no+=1
@@ -280,10 +419,46 @@ def update_google_sheet(service, issues, conclude):
         if issue['project_status'] == 'Estimation Required' and issue['state']!='closed':
             print("Done Issue But not Closed : ",issue['number'])
 
+    print("Previous Month Estimation Required Issues : ",previous_issues_list)
     print("Output issues count : ", output_issues_no)
     print("Backlog issues count : ", backlog_issues_no)
     print("No project issues count : ", no_project_issues_no)
     print("Previous issues count : ", previous_issues_no)
+    print("Last element of output : ",body[-1])
+    numbers_not_in_output = [issue for issue in closed_issues if issue not in output_issues]
+
+    print("The numbers that are in closed issues but not in output issues are:")
+    print(numbers_not_in_output)
+
+def get_current_sheet_done_issues(service, spreadsheet_id, sheet_name):
+    # Call the Sheets API
+    sheet = service.spreadsheets()
+    result = sheet.values().get(spreadsheetId=spreadsheet_id,
+                                range=f"{sheet_name}!A5:H",  # assuming data starts from column A
+                                valueRenderOption='UNFORMATTED_VALUE').execute()
+    values = result.get('values', [])
+
+    outer_list = []
+    for row in values:
+        if len(row) >= 7 and row[6] == 'Estimation Required':  # column G is 7th column (0-indexed)
+            inner_list = row[2:8]  # column C to H (2-7, 8 is exclusive)
+            outer_list.append(inner_list)
+
+    return outer_list
+
+
+def extract_issue_numbers(data):
+    issue_numbers = []
+    for row in data:
+        if len(row) > 2:  # ensure the row has enough columns
+            cell_value = row[2]
+            match = re.search(r'#(\d+)', str(cell_value))
+            if match:
+                try:
+                    issue_numbers.append(int(match.group(1)))
+                except ValueError:
+                    pass  # ignore if the match can't be converted to an integer
+    return issue_numbers
 
 def main():
     """Main function"""
@@ -311,7 +486,8 @@ def main():
     for arg in sys.argv:
         if arg == 'new_month' or arg == 'new_month_new_spreadsheet':
             if arg == 'new_month':
-                update_google_sheet(service, issues, conclude=True)
+                #update_google_sheet(service, issues, conclude=True)
+                pass
             new_range_name = sheet_functions.process_new_month(service, spreadsheet_id)
             utils.update_env_variable('RANGE_NAME', new_range_name)
             mod = "new_month"
